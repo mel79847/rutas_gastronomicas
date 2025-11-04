@@ -33,6 +33,8 @@ import {
   getPlatoName,
 } from "../services/reviews";
 import { useIsAdmin } from "../constants/roles";
+import { Switch } from "react-native";
+import { fetchUserDoc, updateUserPushSettings } from "../services/users";
 
 export default function ProfileScreen() {
   const { colors } = useThemeColors();
@@ -41,6 +43,8 @@ export default function ProfileScreen() {
   const isAdmin = useIsAdmin();
 
   const [loading, setLoading] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(true);
+  const [savingNotifications, setSavingNotifications] = useState(false);
 
   const [myReviews, setMyReviews] = useState<
     Array<{
@@ -80,6 +84,34 @@ export default function ProfileScreen() {
       router.replace("/auth");
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "No se pudo cerrar sesión.");
+    }
+  };
+  const handleToggleNotifications = async (value: boolean) => {
+    if (!user?.uid) return;
+
+    try {
+      setSavingNotifications(true);
+      setNotificationsEnabled(value);
+
+      await updateUserPushSettings(user.uid, {
+        notificationsEnabled: value,
+        ...(value === false ? { pushToken: null } : {}),
+      });
+
+      if (!value) {
+        Alert.alert(
+          "Notificaciones desactivadas",
+          "No te enviaremos push hasta que las vuelvas a activar en tu perfil."
+        );
+      }
+    } catch (e: any) {
+      Alert.alert(
+        "Error",
+        e?.message ?? "No se pudieron actualizar las notificaciones."
+      );
+      setNotificationsEnabled((prev) => !value);
+    } finally {
+      setSavingNotifications(false);
     }
   };
 
@@ -155,6 +187,31 @@ export default function ProfileScreen() {
     });
     return off;
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const doc = await fetchUserDoc(user.uid);
+        if (!doc || cancelled) return;
+
+        setNotificationsEnabled(
+          doc.notificationsEnabled === undefined
+            ? true
+            : !!doc.notificationsEnabled
+        );
+      } catch (e) {
+        console.log("Error cargando settings de notificaciones:", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid]);
 
   const pickAndUpload = async () => {
     try {
@@ -329,6 +386,83 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
       </View>
+      <View
+        style={[
+          styles.sectionCard,
+          {
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+            shadowColor: colors.shadow,
+          },
+        ]}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Text style={[styles.sectionTitle, { color: colors.muted }]}>
+            Notificaciones
+          </Text>
+        </View>
+
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+              shadowColor: colors.shadow,
+              marginTop: spacing.md,
+            },
+          ]}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingVertical: spacing.xs,
+            }}
+          >
+            <View style={{ flex: 1, paddingRight: spacing.sm }}>
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: "700",
+                  color: colors.text,
+                  marginBottom: 4,
+                }}
+              >
+                Notificaciones push
+              </Text>
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: colors.subtitle,
+                }}
+              >
+                {notificationsEnabled
+                  ? "Te avisaremos cuando aprueben tus platos, reciban favoritos o haya anuncios importantes."
+                  : "No recibirás notificaciones. Puedes volver a activarlas cuando quieras."}
+              </Text>
+            </View>
+
+            <View style={{ alignItems: "center" }}>
+              <Switch
+                value={notificationsEnabled}
+                onValueChange={handleToggleNotifications}
+              />
+              {savingNotifications && (
+                <ActivityIndicator size="small" style={{ marginTop: 4 }} />
+              )}
+            </View>
+          </View>
+        </View>
+      </View>
+
       <View
         style={[
           styles.sectionCard,
