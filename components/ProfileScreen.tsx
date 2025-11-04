@@ -118,6 +118,26 @@ export default function ProfileScreen() {
     }
   };
 
+    const handleTestNotificationPress = async () => {
+      if (!notificationsEnabled) {
+        Alert.alert(
+          "Notificaciones desactivadas",
+          "Activa el switch para poder recibir notificaciones."
+        );
+        return;
+      }
+
+      try {
+        await scheduleLocalNotification();
+      } catch (e: any) {
+        console.log("Error al programar notificación local:", e);
+        Alert.alert(
+          "Error",
+          "No se pudo programar la notificación de prueba."
+        );
+      }
+    };
+
   useLayoutEffect(() => {
     navigation.setOptions?.({
       title: "Perfil",
@@ -389,6 +409,7 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
       </View>
+            {/* Sección Notificaciones */}
       <View
         style={[
           styles.sectionCard,
@@ -410,24 +431,21 @@ export default function ProfileScreen() {
             Notificaciones
           </Text>
         </View>
-
         <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-              shadowColor: colors.shadow,
-              marginTop: spacing.md,
-            },
-          ]}
+          style={{
+            marginTop: spacing.md,
+            borderRadius: radius.lg,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.background,
+            padding: spacing.md,
+          }}
         >
           <View
             style={{
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
-              paddingVertical: spacing.xs,
             }}
           >
             <View style={{ flex: 1, paddingRight: spacing.sm }}>
@@ -465,12 +483,12 @@ export default function ProfileScreen() {
           </View>
           <View
             style={{
-              marginTop: spacing.sm,
+              marginTop: spacing.md,
               alignItems: "flex-start",
             }}
           >
             <TouchableOpacity
-              onPress={scheduleLocalNotification}
+              onPress={handleTestNotificationPress}
               style={{
                 paddingVertical: spacing.sm,
                 paddingHorizontal: spacing.lg,
