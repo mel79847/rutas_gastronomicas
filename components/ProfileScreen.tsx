@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Pressable,
   ScrollView,
+  Switch,
 } from "react-native";
 import { useState, useLayoutEffect, useMemo, useEffect } from "react";
 import * as ImagePicker from "expo-image-picker";
@@ -33,8 +34,8 @@ import {
   getPlatoName,
 } from "../services/reviews";
 import { useIsAdmin } from "../constants/roles";
-import { Switch } from "react-native";
 import { fetchUserDoc, updateUserPushSettings } from "../services/users";
+import { scheduleLocalNotification } from "../hooks/usePushNotifications";
 
 export default function ProfileScreen() {
   const { colors } = useThemeColors();
@@ -43,7 +44,8 @@ export default function ProfileScreen() {
   const isAdmin = useIsAdmin();
 
   const [loading, setLoading] = useState(false);
-  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(true);
+  const [notificationsEnabled, setNotificationsEnabled] =
+    useState<boolean>(true);
   const [savingNotifications, setSavingNotifications] = useState(false);
 
   const [myReviews, setMyReviews] = useState<
@@ -86,6 +88,7 @@ export default function ProfileScreen() {
       Alert.alert("Error", e?.message ?? "No se pudo cerrar sesión.");
     }
   };
+
   const handleToggleNotifications = async (value: boolean) => {
     if (!user?.uid) return;
 
@@ -255,7 +258,7 @@ export default function ProfileScreen() {
         Alert.alert("Sesión", "No hay usuario autenticado.");
         return;
       }
-      await current.updateProfile({ photoURL: url });
+      await (current as any).updateProfile({ photoURL: url });
       await current.reload();
 
       await updateUserProfilePhoto(current.uid, url);
@@ -460,9 +463,47 @@ export default function ProfileScreen() {
               )}
             </View>
           </View>
+          <View
+            style={{
+              marginTop: spacing.sm,
+              alignItems: "flex-start",
+            }}
+          >
+            <TouchableOpacity
+              onPress={scheduleLocalNotification}
+              style={{
+                paddingVertical: spacing.sm,
+                paddingHorizontal: spacing.lg,
+                borderRadius: radius.md,
+                backgroundColor: colors.primary,
+              }}
+            >
+              <Text
+                style={{
+                  color: "#fff",
+                  fontWeight: "700",
+                  fontSize: 13,
+                }}
+              >
+                Probar notificación ahora
+              </Text>
+            </TouchableOpacity>
+
+            <Text
+              style={{
+                marginTop: spacing.xs,
+                fontSize: 11,
+                color: colors.subtitle,
+              }}
+            >
+              Mostraremos una notificación en unos segundos si tienes los
+              permisos activados en tu dispositivo.
+            </Text>
+          </View>
         </View>
       </View>
 
+      {/* Tus reseñas */}
       <View
         style={[
           styles.sectionCard,
@@ -567,6 +608,7 @@ export default function ProfileScreen() {
         )}
       </View>
 
+      {/* Historial admin */}
       {isAdmin && (
         <View
           style={[
@@ -671,6 +713,7 @@ export default function ProfileScreen() {
         </View>
       )}
 
+      {/* Rutas gastronómicas */}
       <View
         style={[
           styles.sectionCard,
@@ -717,6 +760,7 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Créditos */}
       <View
         style={[
           styles.sectionCard,
@@ -762,6 +806,7 @@ export default function ProfileScreen() {
         </Text>
       </View>
 
+      {/* Logout */}
       <TouchableOpacity
         onPress={handleLogout}
         style={[
