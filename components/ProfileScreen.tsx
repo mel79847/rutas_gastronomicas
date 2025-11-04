@@ -10,7 +10,13 @@ import {
   ScrollView,
   Switch,
 } from "react-native";
-import { useState, useLayoutEffect, useMemo, useEffect } from "react";
+import {
+  useState,
+  useLayoutEffect,
+  useMemo,
+  useEffect,
+  useRef,
+} from "react";
 import * as ImagePicker from "expo-image-picker";
 
 import { useThemeColors } from "../hooks/useThemeColors";
@@ -37,6 +43,8 @@ import { useIsAdmin } from "../constants/roles";
 import { fetchUserDoc, updateUserPushSettings } from "../services/users";
 import { scheduleLocalNotification } from "../hooks/usePushNotifications";
 
+type ReviewStatus = "pending" | "approved" | "rejected";
+
 export default function ProfileScreen() {
   const { colors } = useThemeColors();
   const user = useUserStore((s) => s.user);
@@ -54,7 +62,7 @@ export default function ProfileScreen() {
       platoId: string;
       title: string;
       meta: string;
-      status: "pending" | "approved" | "rejected";
+      status: ReviewStatus;
       adminFeedback?: string | null;
     }>
   >([]);
@@ -65,10 +73,12 @@ export default function ProfileScreen() {
       platoId: string;
       title: string;
       meta: string;
-      status: "pending" | "approved" | "rejected";
+      status: ReviewStatus;
       feedback?: string | null;
     }>
   >([]);
+
+  const lastReviewStatuses = useRef<Record<string, ReviewStatus>>({});
 
   const navigation = useNavigation();
   const router = useRouter();
@@ -104,7 +114,7 @@ export default function ProfileScreen() {
       if (!value) {
         Alert.alert(
           "Notificaciones desactivadas",
-          "No te enviaremos push hasta que las vuelvas a activar en tu perfil."
+          "No te enviaremos notificaciones hasta que las vuelvas a activar."
         );
       }
     } catch (e: any) {
@@ -118,25 +128,25 @@ export default function ProfileScreen() {
     }
   };
 
-    const handleTestNotificationPress = async () => {
-      if (!notificationsEnabled) {
-        Alert.alert(
-          "Notificaciones desactivadas",
-          "Activa el switch para poder recibir notificaciones."
-        );
-        return;
-      }
+  const handleTestNotificationPress = async () => {
+    if (!notificationsEnabled) {
+      Alert.alert(
+        "Notificaciones desactivadas",
+        "Activa el switch para poder recibir notificaciones."
+      );
+      return;
+    }
 
-      try {
-        await scheduleLocalNotification();
-      } catch (e: any) {
-        console.log("Error al programar notificación local:", e);
-        Alert.alert(
-          "Error",
-          "No se pudo programar la notificación de prueba."
-        );
-      }
-    };
+    try {
+      await scheduleLocalNotification();
+    } catch (e: any) {
+      console.log("Error al programar notificación local:", e);
+      Alert.alert(
+        "Error",
+        "No se pudo programar la notificación de prueba."
+      );
+    }
+  };
 
   useLayoutEffect(() => {
     navigation.setOptions?.({
@@ -165,12 +175,40 @@ export default function ProfileScreen() {
               ).padStart(2, "0")}/${date.getFullYear()}`
             : "";
           const stars = "⭐️".repeat(Math.max(0, r.rating ?? 0));
+          const status = (r.status ?? "pending") as ReviewStatus;
+
+          const prevStatus = lastReviewStatuses.current[r.id!];
+          if (
+            notificationsEnabled &&
+            prevStatus &&
+            prevStatus !== status &&
+            status !== "pending"
+          ) {
+            const approved = status === "approved";
+            scheduleLocalNotification({
+              title: approved
+                ? "Reseña aprobada ✨"
+                : "Reseña revisada",
+              body: approved
+                ? `Tu reseña de ${pName} fue aprobada.`
+                : `Tu reseña de ${pName} fue rechazada. Revisa el feedback del admin.`,
+              data: {
+                type: "review-status-changed",
+                reviewId: r.id,
+                platoId: r.platoId,
+                status,
+              },
+            });
+          }
+
+          lastReviewStatuses.current[r.id!] = status;
+
           return {
             id: r.id!,
             platoId: r.platoId,
             title: `${pName} — ${r.comment ? "Mi reseña" : "Comentario"}`,
             meta: `${stars}  •  ${dd}`,
-            status: r.status as "pending" | "approved" | "rejected",
+            status,
             adminFeedback: r.adminFeedback ?? null,
           };
         })
@@ -178,7 +216,7 @@ export default function ProfileScreen() {
       setMyReviews(items);
     });
     return off;
-  }, [user?.uid]);
+  }, [user?.uid, notificationsEnabled]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -201,7 +239,7 @@ export default function ProfileScreen() {
             platoId: r.platoId,
             title: `${pName} — ${r.userDisplayName ?? "Anónimo"}`,
             meta: `Estado: ${statusLabel(r.status)} • ${dd} • Por: ${who}`,
-            status: r.status as "pending" | "approved" | "rejected",
+            status: (r.status ?? "pending") as ReviewStatus,
             feedback: r.adminFeedback ?? null,
           };
         })
@@ -292,6 +330,14 @@ export default function ProfileScreen() {
         });
       }
 
+      if (notificationsEnabled) {
+        await scheduleLocalNotification({
+          title: "Foto de perfil actualizada",
+          body: "Tu nueva foto de perfil ya está lista 🤎",
+          data: { type: "profile-photo-updated" },
+        });
+      }
+
       Alert.alert("Listo", "Foto actualizada con éxito.");
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "Error al actualizar foto.");
@@ -337,6 +383,7 @@ export default function ProfileScreen() {
       }}
       showsVerticalScrollIndicator={false}
     >
+      {/* Card de perfil */}
       <View
         style={[
           styles.card,
@@ -409,7 +456,6 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
       </View>
-            {/* Sección Notificaciones */}
       <View
         style={[
           styles.sectionCard,
@@ -434,90 +480,70 @@ export default function ProfileScreen() {
         <View
           style={{
             marginTop: spacing.md,
-            borderRadius: radius.lg,
-            borderWidth: 1,
-            borderColor: colors.border,
-            backgroundColor: colors.background,
-            padding: spacing.md,
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
           }}
         >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <View style={{ flex: 1, paddingRight: spacing.sm }}>
-              <Text
-                style={{
-                  fontSize: 14,
-                  fontWeight: "700",
-                  color: colors.text,
-                  marginBottom: 4,
-                }}
-              >
-                Notificaciones push
-              </Text>
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: colors.subtitle,
-                }}
-              >
-                {notificationsEnabled
-                  ? "Te avisaremos cuando aprueben tus platos, reciban favoritos o haya anuncios importantes."
-                  : "No recibirás notificaciones. Puedes volver a activarlas cuando quieras."}
-              </Text>
-            </View>
-
-            <View style={{ alignItems: "center" }}>
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={handleToggleNotifications}
-              />
-              {savingNotifications && (
-                <ActivityIndicator size="small" style={{ marginTop: 4 }} />
-              )}
-            </View>
-          </View>
-          <View
-            style={{
-              marginTop: spacing.md,
-              alignItems: "flex-start",
-            }}
-          >
-            <TouchableOpacity
-              onPress={handleTestNotificationPress}
-              style={{
-                paddingVertical: spacing.sm,
-                paddingHorizontal: spacing.lg,
-                borderRadius: radius.md,
-                backgroundColor: colors.primary,
-              }}
-            >
-              <Text
-                style={{
-                  color: "#fff",
-                  fontWeight: "700",
-                  fontSize: 13,
-                }}
-              >
-                Probar notificación ahora
-              </Text>
-            </TouchableOpacity>
-
+          <View style={{ flex: 1, paddingRight: spacing.sm }}>
             <Text
               style={{
-                marginTop: spacing.xs,
-                fontSize: 11,
+                fontSize: 14,
+                fontWeight: "700",
+                color: colors.text,
+                marginBottom: 4,
+              }}
+            >
+              Notificaciones push
+            </Text>
+            <Text
+              style={{
+                fontSize: 12,
                 color: colors.subtitle,
               }}
             >
-              Mostraremos una notificación en unos segundos si tienes los
-              permisos activados en tu dispositivo.
+              {notificationsEnabled
+                ? "Activadas para reseñas, cambios y avisos."
+                : "Desactivadas en este dispositivo."}
             </Text>
           </View>
+
+          <View style={{ alignItems: "center" }}>
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={handleToggleNotifications}
+            />
+            {savingNotifications && (
+              <ActivityIndicator size="small" style={{ marginTop: 4 }} />
+            )}
+          </View>
+        </View>
+
+        <View
+          style={{
+            marginTop: spacing.md,
+            alignItems: "flex-start",
+          }}
+        >
+          <TouchableOpacity
+            onPress={handleTestNotificationPress}
+            style={{
+              paddingVertical: spacing.sm,
+              paddingHorizontal: spacing.lg,
+              borderRadius: radius.md,
+              backgroundColor: colors.primary,
+            }}
+          >
+            <Text
+              style={{
+                color: "#fff",
+                fontWeight: "700",
+                fontSize: 13,
+              }}
+            >
+              Probar notificación ahora
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Platform } from "react-native";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
@@ -60,14 +61,17 @@ export function usePushNotifications() {
 
 async function registerForPushNotificationsAsync(): Promise<string | undefined> {
   if (!Device.isDevice) {
-    console.warn("[Push] Debes usar un dispositivo físico para push.");
+    console.warn("Debes usar un dispositivo físico para push.");
     return;
   }
-  
-  if ((Constants as any).appOwnership === "expo") {
+
+  if (
+    Platform.OS === "android" &&
+    (Constants as any).appOwnership === "expo"
+  ) {
     console.warn(
-      "[Push] Ejecutando en Expo Go: las push remotas no están soportadas en Android a partir de SDK 53. " +
-        "Usa un development build para probar push remotas."
+      "[Push] Ejecutando en Expo Go Android: las push remotas no están soportadas " +
+        "a partir de SDK 53. Usaremos solo notificaciones locales."
     );
     return;
   }
@@ -81,7 +85,7 @@ async function registerForPushNotificationsAsync(): Promise<string | undefined> 
   }
 
   if (finalStatus !== "granted") {
-    console.warn("[Push] Permisos de notificaciones denegados.");
+    console.warn("Permisos de notificaciones denegados.");
     return;
   }
 
@@ -127,13 +131,19 @@ export async function sendPushNotification(
   });
 }
 
-export async function scheduleLocalNotification() {
+export async function scheduleLocalNotification(custom?: {
+  title?: string;
+  body?: string;
+  data?: Record<string, any>;
+}) {
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: "Rutas Gastronómicas",
-      body: "Vuelve a descubrir un platito paceño hoy 🤍",
+      title: custom?.title ?? "Rutas Gastronómicas",
+      body:
+        custom?.body ??
+        "Vuelve a descubrir un platito paceño hoy 🤍",
       sound: "default",
-      data: { local: true },
+      data: { local: true, ...(custom?.data ?? {}) },
     },
     trigger: { seconds: 2 } as Notifications.NotificationTriggerInput,
   });
